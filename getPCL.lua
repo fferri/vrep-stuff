@@ -5,8 +5,6 @@ getPCL=function(visSensorHandle)
     local u1={}
     r,t1,u1=simReadVisionSensor(visSensorHandle) -- discard first reading
     r,t1,u1=simReadVisionSensor(visSensorHandle)
-    local o=simGetObjectPosition(visSensorHandle,-1)
-    local q=simGetObjectQuaternion(visSensorHandle,-1)
     local m1=simGetObjectMatrix(visSensorHandle,-1)
     if u1 then
         for j=0,u1[2]-1,1 do

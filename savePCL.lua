@@ -1,4 +1,6 @@
-savePCL=function(data,filename)
+savePCL=function(visSensorHandle,data,filename)
+    local o=simGetObjectPosition(visSensorHandle,-1)
+    local q=simGetObjectQuaternion(visSensorHandle,-1)
     local fprintf=function(f,fmt,...) f:write(string.format(fmt,...)) end
     if #data>0 and not saved then
         local f,err=io.open(filename,'w')
