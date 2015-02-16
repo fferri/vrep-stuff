@@ -1,5 +1,4 @@
-getPCL=function(visSensorHandle)
-    local data={}
+getPCL=function(visSensorHandle,data,maxDist)
     local r=0
     local t1={}
     local u1={}
