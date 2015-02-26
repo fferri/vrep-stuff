@@ -28,7 +28,7 @@ J1="$(pcl_jaccard_similarity -t $tol ${basename}.pcd dataset/gt.pcd | grep ^jacc
 echo "j1[$tol]: $J1"
 
 J2="$(pcl_jaccard_similarity -t $tol ${basename}-dyn.pcd dataset/dyn2.pcd | grep ^jaccard | cut -d ' ' -f 4)"
-echo "j2[$tlo]: $J2"
+echo "j2[$tol]: $J2"
 
 J1J2="$(python -c "print($J1*$J2)")"
 echo "j1j2[$tol]: $J1J2"
