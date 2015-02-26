@@ -2,15 +2,23 @@
 
 set -e
 
-tol=${1:-0.01}
-outdir=vrep-dynpcl-dataset
+tol=0.01
+
+if [ "$1" = "-t" ]; then
+    shift
+    tol=$1
+    shift
+fi
+
+indir=raw
+outdir=dataset
 
 mkdir -p $outdir
 
 for n in "bg" "dyn1"; do
-    pcl_union_fast -t $tol vrep-pcl-${n}-{0..150}.pcd $outdir/$n.pcd
+    pcl_union_fast -t $tol $indir/vrep-pcl-${n}-*.pcd $outdir/$n.pcd
 done
-cp vrep-pcl-dyn2-0.pcd $outdir/scan.pcd
+cp $indir/vrep-pcl-dyn2-0.pcd $outdir/scan.pcd
 
 mv $outdir/{dyn1,s}.pcd
 
