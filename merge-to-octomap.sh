@@ -15,6 +15,9 @@ indir=raw
 p_miss=0.0
 p_hit=1.0
 
+clamp_min=0.49
+clamp_max=0.51
+
 pcd_list() {
     local i
     for k in dyn1 dyn2; do
@@ -29,5 +32,5 @@ pcd_list() {
 pcl_make_scanlog $(pcd_list) > scan.log
 ~/octomap/bin/log2graph scan.log scan.graph
 rm scan.log
-~/octomap/bin/graph2tree -res $tol -g -i scan.graph -o octomap.bt -sensor $p_miss $p_hit
+~/octomap/bin/graph2tree -res $tol -i scan.graph -o octomap.bt -sensor $p_miss $p_hit -clamping $clamp_min $clamp_max
 
