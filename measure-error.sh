@@ -10,23 +10,25 @@ if [ "$1" = "-t" ]; then
     shift
 fi
 
-for f in result bg gt dyn2; do
-    if [ ! -f "$f.pcd" ]; then
-        echo "error: $f.pcd does not exist" 1>&2
+basename=${1:-result}
+
+for f in dataset/{bg,gt,dyn2}.pcd result.pcd; do
+    if [ ! -f "$f" ]; then
+        echo "error: $f does not exist" 1>&2
         exit 1
     fi
 done
 
-if [ ! -f "result-dyn.pcd" ]; then
-    echo "info: result-dyn.pcd needs to be created"
-    pcl_difference -t $tol result.pcd bg.pcd result-dyn.pcd
+if [ ! -f "${basename}-dyn.pcd" ]; then
+    echo "info: ${basename}-dyn.pcd needs to be created"
+    pcl_difference -t $tol ${basename}.pcd dataset/bg.pcd ${basename}-dyn.pcd
 fi
 
-J1="$(pcl_jaccard_similarity -t $tol result.pcd gt.pcd | grep ^jaccard | cut -d ' ' -f 4)"
-echo "j1: $J1"
+J1="$(pcl_jaccard_similarity -t $tol ${basename}.pcd dataset/gt.pcd | grep ^jaccard | cut -d ' ' -f 4)"
+echo "j1[$tol]: $J1"
 
-J2="$(pcl_jaccard_similarity -t $tol dyn2.pcd result-dyn.pcd | grep ^jaccard | cut -d ' ' -f 4)"
-echo "j2: $J2"
+J2="$(pcl_jaccard_similarity -t $tol ${basename}-dyn.pcd dataset/dyn2.pcd | grep ^jaccard | cut -d ' ' -f 4)"
+echo "j2[$tlo]: $J2"
 
 J1J2="$(python -c "print($J1*$J2)")"
-echo "j1j2: $J1J2"
+echo "j1j2[$tol]: $J1J2"
