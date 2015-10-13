@@ -1,19 +1,19 @@
 function createRoller(parent, name, num, pos, orient, diam, depth)
-	local hybrid = 1
-	local joint = simCreateJoint(sim_joint_revolute_subtype, sim_jointmode_force, 0)
-	simSetObjectName(joint, name .. 'j' .. num)
+    local hybrid = 1
+    local joint = simCreateJoint(sim_joint_revolute_subtype, sim_jointmode_force, 0)
+    simSetObjectName(joint, name .. 'j' .. num)
     simSetObjectParent(joint, parent, false)
     simSetObjectIntParameter(joint, 2000, 1)
 
-	local backface_culling = 1
-	local visible_edges = 2
-	local smooth = 4
-	local respondable = 8
-	local static = 16
-	local cyl_open_ends = 32
-	local cylinder = simCreatePureShape(2, visible_edges + respondable, {diam, diam, depth}, 0.6)
-	simSetObjectName(cylinder, name .. num)
-	simSetObjectParent(cylinder, joint, false)
+    local backface_culling = 1
+    local visible_edges = 2
+    local smooth = 4
+    local respondable = 8
+    local static = 16
+    local cyl_open_ends = 32
+    local cylinder = simCreatePureShape(2, visible_edges + respondable, {diam, diam, depth}, 0.6)
+    simSetObjectName(cylinder, name .. num)
+    simSetObjectParent(cylinder, joint, false)
     local z = (num - 1)%4
     simSetObjectIntParameter(cylinder, 3019, 2^(4+z) + 130560)
     simResetDynamicObject(cylinder)
@@ -28,8 +28,8 @@ end
 
 function createTrack(parent, name, num, pos, orient, roller_diam, depth, length, num_rollers)
     --local track = simCreateDummy(0)
-	local track = simCreatePureShape(0, 2, {length, roller_diam, 0.999*depth}, 0.6)
-	simSetObjectName(track, name .. num)
+    local track = simCreatePureShape(0, 2, {length, roller_diam, 0.999*depth}, 0.6)
+    simSetObjectName(track, name .. num)
 
     local x = -0.5*length
     local y = 0.0
