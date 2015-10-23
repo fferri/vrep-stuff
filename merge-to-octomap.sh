@@ -10,6 +10,7 @@ if [ "$1" = "-t" ]; then
     shift
 fi
 
+output="${1:-octomap.bt}"
 indir=raw
 
 p_miss=0.0
@@ -32,5 +33,6 @@ pcd_list() {
 pcl_make_scanlog $(pcd_list) > scan.log
 ~/octomap/bin/log2graph scan.log scan.graph
 rm scan.log
-~/octomap/bin/graph2tree -res $tol -i scan.graph -o octomap.bt -sensor $p_miss $p_hit -clamping $clamp_min $clamp_max
+~/octomap/bin/graph2tree -res $tol -i scan.graph -o "$output" -sensor $p_miss $p_hit -clamping $clamp_min $clamp_max
+~/octomap/bin/octree2pointcloud "$output" "$(echo "$output" | sed -e 's/\.[bo]t/.pcd/')"
 

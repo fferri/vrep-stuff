@@ -12,7 +12,7 @@ fi
 
 basename=${1:-result}
 
-for f in dataset/{bg,gt,dyn2}.pcd result.pcd; do
+for f in dataset/{bg,gt,dyn2}.pcd ${basename}.pcd; do
     if [ ! -f "$f" ]; then
         echo "error: $f does not exist" 1>&2
         exit 1
