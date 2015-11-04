@@ -127,6 +127,8 @@ if (sim_call_type==sim_childscriptcall_actuation) then
 end
 ]])
 
+    simSetModelProperty(self.body, 0)
+
     return self
 end
 
