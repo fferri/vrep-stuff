@@ -15,6 +15,11 @@ outdir=dataset
 
 mkdir -p $outdir
 
+if [ ! -d $indir ]; then
+    mkdir $indir
+    mv ~/vrep-pcl-*.pcd $indir
+fi
+
 for n in "bg" "dyn1"; do
     pcl_union_fast -t $tol $indir/vrep-pcl-${n}-*.pcd $outdir/$n.pcd
 done
