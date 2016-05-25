@@ -228,17 +228,17 @@ GCodeInterpreter = {
 
         self:onBeginLine(line)
 
-        local handler=function(self,address,value)
+        local handler=function(address,value)
             self.wordNumber=self.wordNumber+1
-            value=tonumber(value)
+            local valueNum=tonumber(value)
             local f=address:upper()
-            local f1=f..value
+            local f1=f..valueNum
             if self[f1]~=nil then
                 self[f1](self)
             elseif self[f]~=nil then
-                self[f](self,value)
+                self[f](self,valueNum)
             elseif self.verbose or self.warnAboutUnimplementedCommands then
-                simAddStatusbarMessage('WARNING: command '..address..value..' not implemented')
+                simAddStatusbarMessage('WARNING: command '..address..valueNum..' not implemented')
             end
         end
 
