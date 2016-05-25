@@ -301,6 +301,10 @@ GCodeInterpreter = {
         local os=self.currentOrient
         local oe=self.targetOrient
 
+        local red={1,0,0,0,0,0,0,0,0,0,0,0}
+        local green={0,1,0,0,0,0,0,0,0,0,0,0}
+        local blue={0,0,1,0,0,0,0,0,0,0,0,0}
+
         -- scale units:
         for i=1,3 do
             center[i]=(self.currentPos[i]+self.center[i])*self.unitMultiplier
@@ -310,32 +314,24 @@ GCodeInterpreter = {
         radius=radius*self.unitMultiplier
 
         local pstr='    [path '..self.pathNumber..'] '
-
         local d=self:dist(from,to)
-        if d>0.00000001 then
-            local p={}
-            if self.motion==1 then
-                p=self:createLinearPath(from,to)
-                self:trace(pstr..'line from '..self:any2str(from)..' to '..self:any2str(to)..' (d='..d..')')
-            elseif self.motion==2 or self.motion==3 then
-                local direction=2*self.motion-5
-                local centerOrRadius=(self.useCenter and center or radius)
-                p=self:createCircularPath(from,to,direction,centerOrRadius)
-                self:trace(pstr..'arc from '..self:any2str(from)..' to '..self:any2str(to)..' with '..(self.useCenter and ('center '..self:any2str(self.center)) or ('radius '..self.radius))..' (d='..d..')')
-            elseif self.motion==4 then
-                -- pause
-                local milliseconds=self.param
-                -- TODO:
-            else
-                error('unknown motion: '..self.motion)
-            end
+
+        if self.motion==1 then
+            local p=self:createLinearPath(from,to)
             self:trace('    '..#p..' path points')
-            local red={1,0,0,0,0,0,0,0,0,0,0,0}
-            local green={0,1,0,0,0,0,0,0,0,0,0,0}
-            local blue={0,0,1,0,0,0,0,0,0,0,0,0}
+            self:trace(pstr..'line from '..self:any2str(from)..' to '..self:any2str(to)..' (d='..d..')')
             self:mkpath(p,os,oe,(self.rapid and red or green),self.speed)
-        else
-            self:trace(pstr..'no motion (d='..d..')')
+        elseif self.motion==2 or self.motion==3 then
+            local direction=2*self.motion-5
+            local centerOrRadius=(self.useCenter and center or radius)
+            local p=self:createCircularPath(from,to,direction,centerOrRadius)
+            self:trace('    '..#p..' path points')
+            self:trace(pstr..'arc from '..self:any2str(from)..' to '..self:any2str(to)..' with '..(self.useCenter and ('center '..self:any2str(self.center)) or ('radius '..self.radius))..' (d='..d..')')
+            self:mkpath(p,os,oe,(self.rapid and red or green),self.speed)
+        elseif self.motion==4 then
+            -- pause
+            local milliseconds=self.param
+            -- TODO:
         end
 
         for i=1,3 do
