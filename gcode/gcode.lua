@@ -80,7 +80,7 @@ GCodeInterpreter = {
             for j=1,3 do table.insert(point, from[j]*(1-tau)+to[j]*tau) end
             table.insert(points, point)
         end
-        return points
+        return points,d
     end,
 
     createCircularPath=function(self,from,to,direction,centerOrRadius)
@@ -151,7 +151,7 @@ GCodeInterpreter = {
             local point={center[1]+r1*math.cos(a),center[2]+r1*math.sin(a),from[3]}
             table.insert(points, point)
         end
-        return points
+        return points,d
     end,
 
     createCircularPathWithRadius=function(self,from,to,direction,radius)
@@ -269,7 +269,7 @@ GCodeInterpreter = {
         self:onEndLine(line)
     end,
 
-    mkpath=function(self,points,startOrient,endOrient,color,speed)
+    mkpath=function(self,points,startOrient,endOrient,color,duration)
         local status,dh=pcall(function() return simGetObjectHandle('Path') end)
         if not status then
             dh=simCreateDummy(0)
@@ -277,7 +277,7 @@ GCodeInterpreter = {
         end
         local prop=sim_pathproperty_show_line
         local h=simCreatePath(prop,nil,nil,color)
-        simWriteCustomDataBlock(h,'@tmpSpeed',simPackFloats({speed}))
+        simWriteCustomDataBlock(h,'duration',simPackFloats({duration}))
         simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
         simSetObjectParent(h,dh,true)
         data={}
@@ -292,8 +292,6 @@ GCodeInterpreter = {
     end,
 
     executeMotion=function(self)
-        self.pathNumber=self.pathNumber+1
-
         local from={0,0,0}
         local to={0,0,0}
         local center={0,0,0}
@@ -317,21 +315,27 @@ GCodeInterpreter = {
         local d=self:dist(from,to)
 
         if self.motion==1 then
-            local p=self:createLinearPath(from,to)
+            local p,len=self:createLinearPath(from,to)
             self:trace('    '..#p..' path points')
             self:trace(pstr..'line from '..self:any2str(from)..' to '..self:any2str(to)..' (d='..d..')')
-            self:mkpath(p,os,oe,(self.rapid and red or green),self.speed)
+            self.pathNumber=self.pathNumber+1
+            self:mkpath(p,os,oe,(self.rapid and red or green),len/self.speed)
         elseif self.motion==2 or self.motion==3 then
             local direction=2*self.motion-5
             local centerOrRadius=(self.useCenter and center or radius)
-            local p=self:createCircularPath(from,to,direction,centerOrRadius)
+            local p,len=self:createCircularPath(from,to,direction,centerOrRadius)
             self:trace('    '..#p..' path points')
             self:trace(pstr..'arc from '..self:any2str(from)..' to '..self:any2str(to)..' with '..(self.useCenter and ('center '..self:any2str(self.center)) or ('radius '..self.radius))..' (d='..d..')')
-            self:mkpath(p,os,oe,(self.rapid and red or green),self.speed)
+            self.pathNumber=self.pathNumber+1
+            self:mkpath(p,os,oe,(self.rapid and red or green),len/self.speed)
         elseif self.motion==4 then
             -- pause
-            local milliseconds=self.param
-            -- TODO:
+            local seconds=0.001*self.param
+            self.pathNumber=self.pathNumber+1
+            local h=simCreateDummy(0)
+            simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
+            simSetObjectParent(h,dh,true)
+            simWriteCustomDataBlock(h,'duration',simPackFloats({seconds}))
         end
 
         for i=1,3 do
