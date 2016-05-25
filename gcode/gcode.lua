@@ -451,6 +451,24 @@ GCodeInterpreter = {
         self.useCenter=false
     end,
 
+    U=function(self,value)
+        self:trace('U'..value..'  Incremental position of X axis')
+        self.targetPos[1]=self.targetPos[1]+value
+        if self.motion==0 then self.motion=self.lastMotion end
+    end,
+
+    V=function(self,value)
+        self:trace('V'..value..'  Incremental position of X axis')
+        self.targetPos[2]=self.targetPos[2]+value
+        if self.motion==0 then self.motion=self.lastMotion end
+    end,
+
+    W=function(self,value)
+        self:trace('W'..value..'  Incremental position of X axis')
+        self.targetPos[3]=self.targetPos[3]+value
+        if self.motion==0 then self.motion=self.lastMotion end
+    end,
+
     X=function(self,value)
         -- X: Absolute or incremental position of X axis.
         --    Also defines dwell time on some machines (instead of "P" or "U").
