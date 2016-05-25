@@ -18,6 +18,7 @@ GCodeInterpreter = {
     lineNumber=0,
     wordNumber=0,
     pathNumber=0,
+    param=0,
 
     trace=function(self,txt)
         if self.verbose then simAddStatusbarMessage(txt) end
@@ -321,6 +322,10 @@ GCodeInterpreter = {
                 local centerOrRadius=(self.useCenter and center or radius)
                 p=self:createCircularPath(from,to,direction,centerOrRadius)
                 self:trace(pstr..'arc from '..self:any2str(from)..' to '..self:any2str(to)..' with '..(self.useCenter and ('center '..self:any2str(self.center)) or ('radius '..self.radius))..' (d='..d..')')
+            elseif self.motion==4 then
+                -- pause
+                local milliseconds=self.param
+                -- TODO:
             else
                 error('unknown motion: '..self.motion)
             end
@@ -392,6 +397,11 @@ GCodeInterpreter = {
         self.motion=3
     end,
 
+    G4=function(self)
+        self:trace('G03  Dwell (pause)')
+        self.motion=4
+    end,
+
     G20=function(self)
         self:trace('G20  Programming in inches')
         self.unitMultiplier=25.4*0.001
@@ -439,6 +449,10 @@ GCodeInterpreter = {
         self:trace('K'..value..'  Arc center in Z axis')
         self.center[3]=value
         self.useCenter=true
+    end,
+
+    P=function(self,value)
+        self.param=value
     end,
 
     R=function(self,value)
