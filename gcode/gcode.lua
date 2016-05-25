@@ -269,28 +269,6 @@ GCodeInterpreter = {
         self:onEndLine(line)
     end,
 
-    mkpath=function(self,points,startOrient,endOrient,color,duration)
-        local status,dh=pcall(function() return simGetObjectHandle('Path') end)
-        if not status then
-            dh=simCreateDummy(0)
-            simSetObjectName(dh,'Path')
-        end
-        local prop=sim_pathproperty_show_line
-        local h=simCreatePath(prop,nil,nil,color)
-        simWriteCustomDataBlock(h,'duration',simPackFloats({duration}))
-        simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
-        simSetObjectParent(h,dh,true)
-        data={}
-        for i=1,#points do
-            local tau=(i-1)/(#points-1)
-            for j=1,3 do table.insert(data,points[i][j]) end
-            for j=1,3 do table.insert(data,startOrient[j]*(1-tau)+endOrient[j]*tau) end
-            for j=1,5 do table.insert(data,0) end
-        end
-        simInsertPathCtrlPoints(h,0,0,#points,data)
-        return h
-    end,
-
     executeMotion=function(self)
         local from={0,0,0}
         local to={0,0,0}
@@ -311,27 +289,51 @@ GCodeInterpreter = {
         end
         radius=radius*self.unitMultiplier
 
-        local pstr='    [path '..self.pathNumber..'] '
         local d=self:dist(from,to)
 
-        if self.motion==1 then
-            local p,len=self:createLinearPath(from,to)
-            self:trace('    '..#p..' path points')
-            self:trace(pstr..'line from '..self:any2str(from)..' to '..self:any2str(to)..' (d='..d..')')
-            self.pathNumber=self.pathNumber+1
-            self:mkpath(p,os,oe,(self.rapid and red or green),len/self.speed)
-        elseif self.motion==2 or self.motion==3 then
+        local createDummyContainer=function()
+            local status,dh=pcall(function() return simGetObjectHandle('Path') end)
+            if not status then
+                dh=simCreateDummy(0)
+                simSetObjectName(dh,'Path')
+            end
+            simWriteCustomDataBlock(dh,'count',self.pathNumber)
+            return dh
+        end
+        if self.motion==1 or self.motion==2 or self.motion==3 then
             local direction=2*self.motion-5
-            local centerOrRadius=(self.useCenter and center or radius)
-            local p,len=self:createCircularPath(from,to,direction,centerOrRadius)
+            local p={}
+            local len=-1
+            local tstr='?'
+            local pstr='    [path '..self.pathNumber..'] '
+            if self.motion==1 then
+                tstr='line'
+                p,len=self:createLinearPath(from,to)
+            else
+                tstr='arc'
+                p,len=self:createCircularPath(from,to,direction,(self.useCenter and center or radius))
+            end
             self:trace('    '..#p..' path points')
-            self:trace(pstr..'arc from '..self:any2str(from)..' to '..self:any2str(to)..' with '..(self.useCenter and ('center '..self:any2str(self.center)) or ('radius '..self.radius))..' (d='..d..')')
+            self:trace(pstr..tstr..' from '..self:any2str(from)..' to '..self:any2str(to)..(self.motion==1 and '' or (' with '..(self.useCenter and ('center '..self:any2str(self.center)) or ('radius '..self.radius))))..' (d='..d..')')
             self.pathNumber=self.pathNumber+1
-            self:mkpath(p,os,oe,(self.rapid and red or green),len/self.speed)
+            local dh=createDummyContainer()
+            local h=simCreatePath(sim_pathproperty_show_line,nil,nil,(self.rapid and red or green))
+            simWriteCustomDataBlock(h,'duration',simPackFloats({len/self.speed}))
+            simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
+            simSetObjectParent(h,dh,true)
+            data={}
+            for i=1,#p do
+                local tau=(i-1)/(#p-1)
+                for j=1,3 do table.insert(data,p[i][j]) end
+                for j=1,3 do table.insert(data,self.currentOrient[j]*(1-tau)+self.targetOrient[j]*tau) end
+                for j=1,5 do table.insert(data,0) end
+            end
+            simInsertPathCtrlPoints(h,0,0,#p,data)
         elseif self.motion==4 then
             -- pause
             local seconds=0.001*self.param
             self.pathNumber=self.pathNumber+1
+            local dh=createDummyContainer()
             local h=simCreateDummy(0)
             simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
             simSetObjectParent(h,dh,true)
