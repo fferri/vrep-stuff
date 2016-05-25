@@ -268,7 +268,7 @@ GCodeInterpreter = {
         self:onEndLine(line)
     end,
 
-    mkpath=function(self,points,startOrient,endOrient,color)
+    mkpath=function(self,points,startOrient,endOrient,color,speed)
         local status,dh=pcall(function() return simGetObjectHandle('Path') end)
         if not status then
             dh=simCreateDummy(0)
@@ -276,6 +276,7 @@ GCodeInterpreter = {
         end
         local prop=sim_pathproperty_show_line
         local h=simCreatePath(prop,nil,nil,color)
+        simWriteCustomDataBlock(h,'@tmpSpeed',simPackFloats({speed}))
         simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
         simSetObjectParent(h,dh,true)
         data={}
@@ -327,7 +328,7 @@ GCodeInterpreter = {
             local red={1,0,0,0,0,0,0,0,0,0,0,0}
             local green={0,1,0,0,0,0,0,0,0,0,0,0}
             local blue={0,0,1,0,0,0,0,0,0,0,0,0}
-            self:mkpath(p,os,oe,(self.rapid and red or green))
+            self:mkpath(p,os,oe,(self.rapid and red or green),self.speed)
         else
             self:trace(pstr..'no motion (d='..d..')')
         end
