@@ -1,3 +1,6 @@
+require 'utils'
+require 'logger'
+
 GCodeInterpreter = {
     verbose=false,
     warnAboutUnimplementedCommands=true,
@@ -20,58 +23,11 @@ GCodeInterpreter = {
     pathNumber=0,
     param=0,
 
-    trace=function(self,txt)
-        if self.verbose then simAddStatusbarMessage(txt) end
-    end,
-
-    dist=function(self,a,b)
-        local p=math.pow
-        return math.sqrt(p(a[1]-b[1],2)+p(a[2]-b[2],2)+p(a[3]-b[3],2))
-    end,
-
-    scalar=function(self,x,name)
-        if type(x)~='number' then error(name..' must be a number') end
-    end,
-
-    oneof=function(self,x,X,name)
-        found=false
-        e=''
-        for i=1,#X do
-            e=(e=='' and '' or ', ')..X[i]
-            if x==X[i] then found=true end
-        end
-        if not found then error(name..' must be one of {'..e..'}') end
-    end,
-
-    vector=function(self,v,size,name)
-        if type(v)~='table' then error(name..' must be a table') end
-        if size>=0 and #v~=size then error(name..' must have '..size..' elements') end
-        for i=1,#v do
-            if type(v[i])~='number' then error(name.."'s elements must be numbers") end
-        end
-    end,
-
-    str=function(self,x,name)
-        if type(x)~='string' then error(name..' must be a string') end
-    end,
-
-    any2str=function(self,x)
-        if type(x)=='string' then return x end
-        if type(x)=='number' then return ''..x end
-        if type(x)=='table' then
-            local s=''
-            for i=1,#x do
-                s=s..(s=='' and '' or ', ')..self:any2str(x[i])
-            end
-            return '{'..s..'}'
-        end
-    end,
-
     createLinearPath=function(self,from,to)
-        self:vector(from,3,'from')
-        self:vector(to,3,'to')
+        asserttable(from,'from',3,'number')
+        asserttable(to,'to',3,'number')
 
-        local d=self:dist(from,to)
+        local d=math.hypotn(from,to)
         local n=math.max(1,math.floor(d*self.pathResolution))
         local points={}
         for i=0,n do
@@ -84,9 +40,9 @@ GCodeInterpreter = {
     end,
 
     createCircularPath=function(self,from,to,direction,centerOrRadius)
-        self:vector(from,3,'from')
-        self:vector(to,3,'to')
-        self:oneof(direction,{-1,1},'direction')
+        asserttable(from,'from',3,'number')
+        asserttable(to,'to',3,'number')
+        assertmember(direction,{-1,1},'direction')
 
         local t=type(centerOrRadius)
         if t=='number' then
@@ -99,24 +55,19 @@ GCodeInterpreter = {
     end,
 
     createCircularPathWithCenter=function(self,from,to,direction,center)
-        self:vector(from,3,'from')
-        self:vector(to,3,'to')
-        self:oneof(direction,{-1,1},'direction')
-        self:vector(center,3,'center')
+        asserttable(from,'from',3,'number')
+        asserttable(to,'to',3,'number')
+        assertmember(direction,{-1,1},'direction')
+        asserttable(center,'center',3,'number')
 
         if math.abs(from[3]-to[3])>0.0001 then
-            self:trace('createCircularPathWithCenter:'..
-                       ' from='..self:any2str(from)..
-                       ' to='..self:any2str(to)..
-                       ' center='..self:any2str(center)..
-                       ' r1='..self:dist(from,center)..
-                       ' r2='..self:dist(to,center))
+            log(LOG.DEBUG,'createCircularPathWithCenter: from=%s to=%s center=%s r1=%f r2=%f',from,to,center,math.hypotn(from,center),math.hypotn(to,center))
             error('from/to points do not have the same Z')
         end
 
         -- compute start/end radiuses:
-        local r1=self:dist(from,center)
-        local r2=self:dist(to,center)
+        local r1=math.hypotn(from,center)
+        local r2=math.hypotn(to,center)
         if math.abs(r1-r2) > 0.0025 then
             error('start and end radius are not the same: error='..math.abs(r1-r2))
         end
@@ -155,10 +106,10 @@ GCodeInterpreter = {
     end,
 
     createCircularPathWithRadius=function(self,from,to,direction,radius)
-        self:vector(from,3,'from')
-        self:vector(to,3,'to')
-        self:oneof(direction,{-1,1},'direction')
-        self:scalar(radius,'radius')
+        asserttable(from,'from',3,'number')
+        asserttable(to,'to',3,'number')
+        assertmember(direction,{-1,1},'direction')
+        assertnumber(radius,'radius')
 
         local r=radius
         local x1=from[1]
@@ -170,7 +121,7 @@ GCodeInterpreter = {
         -- find the centers of the two circles passing thru (x1,y1) and (x2,y2):
         local x3=(x1+x2)/2
         local y3=(y1+y2)/2
-        local d=self:dist({x1,y1,z},{x2,y2,z})
+        local d=math.hypotn({x1,y1},{x2,y2})
         local xA=x3+math.sqrt(r*r-d*d/4)*(y1-y2)/d
         local yA=y3+math.sqrt(r*r-d*d/4)*(x2-x1)/d
         local xB=x3-math.sqrt(r*r-d*d/4)*(y1-y2)/d
@@ -193,17 +144,15 @@ GCodeInterpreter = {
     end,
 
     onEndProgram=function(self,program)
-        self:trace('parsed '..self.wordNumber..' words in '..self.lineNumber..' lines')
+        log(LOG.INFO,'parsed %d words in %d lines',self.wordNumber,self.lineNumber)
     end,
 
     runProgram=function(self,program)
-        self:str(program,'program')
+        assertstring(program,'program')
 
         self:onBeginProgram(program)
 
-        local lines={}
-        local function helper(line) table.insert(lines,line) return '' end
-        helper((program:gsub("(.-)\r?\n", helper)))
+        local lines=string.splitlines(program)
         for i=1,#lines do
             self.lineNumber=self.lineNumber+1
             self:runLine(lines[i])
@@ -213,7 +162,7 @@ GCodeInterpreter = {
     end,
 
     onBeginLine=function(self,line)
-        self:trace('>>>>>>>>  '..line)
+        log(LOG.TRACE,'>>>>>>>>  %s',line)
     end,
 
     onEndLine=function(self,line)
@@ -221,7 +170,7 @@ GCodeInterpreter = {
     end,
 
     runLine=function(self,line)
-        self:str(line,'line')
+        assertstring(line,'line')
 
         self.center={0,0,0}
         self.radius=0
@@ -238,8 +187,8 @@ GCodeInterpreter = {
                 self[f1](self)
             elseif self[f]~=nil then
                 self[f](self,valueNum)
-            elseif self.verbose or self.warnAboutUnimplementedCommands then
-                simAddStatusbarMessage('WARNING: command '..address..valueNum..' not implemented')
+            else
+                log(LOG.WARN,'command '..address..valueNum..' not implemented')
             end
         end
 
@@ -289,7 +238,7 @@ GCodeInterpreter = {
         end
         radius=radius*self.unitMultiplier
 
-        local d=self:dist(from,to)
+        local d=math.hypotn(from,to)
 
         local createDummyContainer=function()
             local status,dh=pcall(function() return simGetObjectHandle('Path') end)
@@ -313,8 +262,7 @@ GCodeInterpreter = {
                 tstr='arc'
                 p,len=self:createCircularPath(from,to,direction,(self.useCenter and center or radius))
             end
-            self:trace('    '..#p..' path points')
-            self:trace(pstr..tstr..' from '..self:any2str(from)..' to '..self:any2str(to)..(self.motion==1 and '' or (' with '..(self.useCenter and ('center '..self:any2str(self.center)) or ('radius '..self.radius))))..' (d='..d..')')
+            log(LOG.TRACE,'generated %d path points',#p)
             self.pathNumber=self.pathNumber+1
             local dh=createDummyContainer()
             local h=simCreatePath(sim_pathproperty_show_line,nil,nil,(self.rapid and red or green))
@@ -348,19 +296,19 @@ GCodeInterpreter = {
 
     A=function(self,value)
         -- A: Absolute or incremental position of A axis (rotational axis around X axis)
-        self:trace('A'..value..'  A-axis position')
+        log(LOG.TRACE,'A%s  A-axis position',value)
         self.targetOrient[1]=(self.absolute and 0 or self.targetOrient[1])+value
     end,
 
     B=function(self,value)
         -- B: Absolute or incremental position of B axis (rotational axis around Y axis)	
-        self:trace('B'..value..'  B-axis position')
+        log(LOG.TRACE,'B%s  B-axis position',value)
         self.targetOrient[2]=(self.absolute and 0 or self.targetOrient[2])+value
     end,
 
     C=function(self,value)
         -- C: Absolute or incremental position of C axis (rotational axis around Z axis)	
-        self:trace('C'..value..'  C-axis position')
+        log(LOG.TRACE,'C%s  C-axis position',value)
         self.targetOrient[3]=(self.absolute and 0 or self.targetOrient[3])+value
     end,
 
@@ -369,70 +317,70 @@ GCodeInterpreter = {
         --    Common units are distance per time for mills (inches per minute, IPM, or
         --    millimeters per minute, mm/min) and distance per revolution for lathes
         --    (inches per revolution, IPR, or millimeters per revolution, mm/rev)
-        self:trace('F'..value..'  Feedrate')
+        log(LOG.TRACE,'F%s  Feedrate',value)
         speed=value
     end,
 
     G0=function(self)
-        self:trace('G00  Rapid positioning')
+        log(LOG.TRACE,'G00  Rapid positioning')
         self.rapid=true
         self.motion=1
     end,
 
     G1=function(self)
-        self:trace('G01  Linear interpolation')
+        log(LOG.TRACE,'G01  Linear interpolation')
         self.rapid=false
         self.motion=1
     end,
 
     G2=function(self)
-        self:trace('G02  Circular interpolation, clockwise')
+        log(LOG.TRACE,'G02  Circular interpolation, clockwise')
         --      Center given with I,J,K commands (or radius with R)
         self.rapid=false
         self.motion=2
     end,
 
     G3=function(self)
-        self:trace('G03  Circular interpolation, counterclockwise')
+        log(LOG.TRACE,'G03  Circular interpolation, counterclockwise')
         --      Center given with I,J,K commands (or radius with R)
         self.rapid=false
         self.motion=3
     end,
 
     G4=function(self)
-        self:trace('G03  Dwell (pause)')
+        log(LOG.TRACE,'G03  Dwell (pause)')
         self.motion=4
     end,
 
     G20=function(self)
-        self:trace('G20  Programming in inches')
+        log(LOG.TRACE,'G20  Programming in inches')
         self.unitMultiplier=25.4*0.001
     end,
 
     G21=function(self)
-        self:trace('G21  Programming in millimeters (mm)')
+        log(LOG.TRACE,'G21  Programming in millimeters (mm)')
         self.unitMultiplier=0.001
     end,
 
     G28=function(self)
-        self:trace('G28  Return to home position')
+        log(LOG.TRACE,'G28  Return to home position')
         self.targetPos={0,0,0}
     end,
 
     G90=function(self)
-        self:trace('G90  Absolute programming')
+        log(LOG.TRACE,'G90  Absolute programming')
         self.absolute=true
     end,
 
     G91=function(self)
-        self:trace('G91  Incremental programming')
+        log(LOG.TRACE,'G91  Incremental programming')
         self.absolute=false
     end,
 
     I=function(self,value)
         -- I: Defines arc center in X axis for G02 or G03 arc commands.
         --    Also used as a parameter within some fixed cycles.
-        self:trace('I'..value..'  Arc center in X axis')
+        log(LOG.TRACE,'I%s  Arc center in X axis',value)
         self.center[1]=value
         self.useCenter=true
     end,
@@ -440,7 +388,7 @@ GCodeInterpreter = {
     J=function(self,value)
         -- J: Defines arc center in Y axis for G02 or G03 arc commands.
         --    Also used as a parameter within some fixed cycles.	
-        self:trace('J'..value..'  Arc center in Y axis')
+        log(LOG.TRACE,'J%s  Arc center in Y axis',value)
         self.center[2]=value
         self.useCenter=true
     end,
@@ -448,7 +396,7 @@ GCodeInterpreter = {
     K=function(self,value)
         -- K: Defines arc center in Z axis for G02 or G03 arc commands.
         --    Also used as a parameter within some fixed cycles, equal to L address.	
-        self:trace('K'..value..'  Arc center in Z axis')
+        log(LOG.TRACE,'K%s  Arc center in Z axis',value)
         self.center[3]=value
         self.useCenter=true
     end,
@@ -462,25 +410,25 @@ GCodeInterpreter = {
         --    For radii, not all controls support the R address for G02 and G03, in which
         --    case IJK vectors are used. For retract height, the "R level", as it's called,
         --    is returned to if G99 is programmed.
-        self:trace('R'..value..'  Size of arc radius')
+        log(LOG.TRACE,'R%s  Size of arc radius',value)
         self.radius=value
         self.useCenter=false
     end,
 
     U=function(self,value)
-        self:trace('U'..value..'  Incremental position of X axis')
+        log(LOG.TRACE,'U%s  Incremental position of X axis',value)
         self.targetPos[1]=self.targetPos[1]+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
 
     V=function(self,value)
-        self:trace('V'..value..'  Incremental position of X axis')
+        log(LOG.TRACE,'V%s  Incremental position of X axis',value)
         self.targetPos[2]=self.targetPos[2]+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
 
     W=function(self,value)
-        self:trace('W'..value..'  Incremental position of X axis')
+        log(LOG.TRACE,'W%s  Incremental position of X axis',value)
         self.targetPos[3]=self.targetPos[3]+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
@@ -488,14 +436,14 @@ GCodeInterpreter = {
     X=function(self,value)
         -- X: Absolute or incremental position of X axis.
         --    Also defines dwell time on some machines (instead of "P" or "U").
-        self:trace('X'..value..'  Absolute/incremental position of X axis')
+        log(LOG.TRACE,'X%s  Absolute/incremental position of X axis',value)
         self.targetPos[1]=(self.absolute and 0 or self.targetPos[1])+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
 
     Y=function(self,value)
         -- Y: Absolute or incremental position of Y axis	
-        self:trace('Y'..value..'  Absolute/incremental position of Y axis')
+        log(LOG.TRACE,'Y%s  Absolute/incremental position of Y axis',value)
         self.targetPos[2]=(self.absolute and 0 or self.targetPos[2])+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
@@ -504,7 +452,7 @@ GCodeInterpreter = {
         -- Z: Absolute or incremental position of Z axis
         --    The main spindle's axis of rotation often determines which axis of a
         --    machine tool is labeled as Z.
-        self:trace('Z'..value..'  Absolute/incremental position of Z axis')
+        log(LOG.TRACE,'Z%s  Absolute/incremental position of Z axis',value)
         self.targetPos[3]=(self.absolute and 0 or self.targetPos[3])+value
         if self.motion==0 then self.motion=self.lastMotion end
     end
