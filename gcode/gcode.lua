@@ -7,10 +7,12 @@ GCodeInterpreter = {
     unitMultiplier=0.001,
     absolute=true,
     rapid=false,
-    currentPos={0,0,0},
-    targetPos={0,0,0},
-    currentOrient={0,0,0},
-    targetOrient={0,0,0},
+    -- currentPos={0,0,0},
+    -- targetPos={0,0,0},
+    -- currentOrient={0,0,0},
+    -- targetOrient={0,0,0},
+    currentM={1,0,0,0,0,1,0,0,0,0,1,0},
+    targetM={1,0,0,0,0,1,0,0,0,0,1,0},
     speed=0,
     lastMotion=1,
     motion=0, -- 1=linear, 2=cw, 3=ccw
@@ -22,6 +24,11 @@ GCodeInterpreter = {
     wordNumber=0,
     pathNumber=0,
     param=0,
+    visualizationMethod=1, -- 0=none, 1=drawing objects, 2=path objects
+    greenLineContainer=-1,
+    redLineContainer=-1,
+    bluePointContainer=-1,
+    pathItems={}, -- {duration,{pathPoints}},{duration,{pathPoints}}, etc., with pathPoints={pos1,pos2,pos3,orient1,orient2,orient3}
 
     createLinearPath=function(self,from,to)
         asserttable(from,'from',3,'number')
@@ -147,18 +154,33 @@ GCodeInterpreter = {
         log(LOG.INFO,'parsed %d words in %d lines',self.wordNumber,self.lineNumber)
     end,
 
-    runProgram=function(self,program)
+    runProgram=function(self,program,visualizePath)
         assertstring(program,'program')
 
         self:onBeginProgram(program)
+        self.pathItems={}
+        self.greenLineContainer=nil
+        self.redLineContainer=nil
+        self.bluePointContainer=nil
+        if visualizePath then
+            self.visualizationMethod=1
+        else
+            self.visualizationMethod=0
+        end
+        if  self.visualizationMethod==1 then
+            self.greenLineContainer=simAddDrawingObject(sim_drawing_lines,1,0,-1,99999999,{0,0,0},nil,nil,{0,1,0})
+            self.redLineContainer=simAddDrawingObject(sim_drawing_lines,1,0,-1,99999999,{0,0,0},nil,nil,{1,0,0})
+            self.bluePointContainer=simAddDrawingObject(sim_drawing_spherepoints,0.0025,0,-1,99999999,{0,0,0},nil,nil,{0,0,1})
+        end
 
         local lines=string.splitlines(program)
         for i=1,#lines do
             self.lineNumber=self.lineNumber+1
             self:runLine(lines[i])
         end
-
+        
         self:onEndProgram(program)
+        return self.pathItems, self.greenLineContainer, self.redLineContainer, self.bluePointContainer
     end,
 
     onBeginLine=function(self,line)
@@ -223,19 +245,27 @@ GCodeInterpreter = {
         local to={0,0,0}
         local center={0,0,0}
         local radius=self.radius
-        local os=self.currentOrient
-        local oe=self.targetOrient
+        -- local os=self.currentOrient
+        -- local oe=self.targetOrient
+        local os=self.currentM
+        local oe=self.targetM
 
-        local red={1,0,0,0,0,0,0,0,0,0,0,0}
-        local green={0,1,0,0,0,0,0,0,0,0,0,0}
-        local blue={0,0,1,0,0,0,0,0,0,0,0,0}
+        local red={0,0,0,0,0,0,0,0,0,1,0,0}
+        local green={0,0,0,0,0,0,0,0,0,0,1,0}
+        local blue={0,0,0,0,0,0,0,0,0,0,0,1}
 
         -- scale units:
+        -- for i=1,3 do
+        --     center[i]=(self.currentPos[i]+self.center[i])*self.unitMultiplier
+        --     from[i]=self.currentPos[i]*self.unitMultiplier
+        --     to[i]=self.targetPos[i]*self.unitMultiplier
+        -- end
         for i=1,3 do
-            center[i]=(self.currentPos[i]+self.center[i])*self.unitMultiplier
-            from[i]=self.currentPos[i]*self.unitMultiplier
-            to[i]=self.targetPos[i]*self.unitMultiplier
+            center[i]=(self.currentM[i*4]+self.center[i])*self.unitMultiplier
+            from[i]=self.currentM[i*4]*self.unitMultiplier
+            to[i]=self.targetM[i*4]*self.unitMultiplier
         end
+        
         radius=radius*self.unitMultiplier
 
         local d=math.hypotn(from,to)
@@ -264,52 +294,107 @@ GCodeInterpreter = {
             end
             log(LOG.TRACE,'generated %d path points',#p)
             self.pathNumber=self.pathNumber+1
-            local dh=createDummyContainer()
-            local h=simCreatePath(sim_pathproperty_show_line,nil,nil,(self.rapid and red or green))
-            simWriteCustomDataBlock(h,'duration',simPackFloats({len/self.speed}))
-            simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
-            simSetObjectParent(h,dh,true)
-            data={}
+            
+            if self.visualizationMethod==2 then
+                local dh=createDummyContainer()
+                local h=simCreatePath(sim_pathproperty_show_line,{1,sim_distcalcmethod_dl,0},{0.001,1,1},(self.rapid and red or green))
+                simWriteCustomDataBlock(h,'duration',simPackFloats({len/self.speed}))
+                simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
+                simSetObjectParent(h,dh,true)
+                local data={}
+                for i=1,#p do
+                    local tau=(i-1)/(#p-1)
+                    for j=1,3 do table.insert(data,p[i][j]) end
+                    -- for j=1,3 do table.insert(data,self.currentOrient[j]*(1-tau)+self.targetOrient[j]*tau) end
+                    local m=simInterpolateMatrices(self.currentM,self.targetM,tau)
+                    local euler=simGetEulerAnglesFromMatrix(m)
+                    for j=1,3 do table.insert(data,euler[j]) end
+                    for j=1,5 do table.insert(data,0) end
+                end
+                simInsertPathCtrlPoints(h,0,0,#p,data)
+            end
+            if self.visualizationMethod==1 then
+                for i=1,#p-1 do
+                    local data={p[i][1],p[i][2],p[i][3],p[i+1][1],p[i+1][2],p[i+1][3]}
+                    if self.rapid then
+                        simAddDrawingObjectItem(self.redLineContainer,data)
+                    else
+                        simAddDrawingObjectItem(self.greenLineContainer,data)
+                    end
+                end
+            end
+            local pathPoints={}
             for i=1,#p do
                 local tau=(i-1)/(#p-1)
-                for j=1,3 do table.insert(data,p[i][j]) end
-                for j=1,3 do table.insert(data,self.currentOrient[j]*(1-tau)+self.targetOrient[j]*tau) end
-                for j=1,5 do table.insert(data,0) end
+                for j=1,3 do table.insert(pathPoints,p[i][j]) end
+                -- for j=1,3 do table.insert(pathPoints,self.currentOrient[j]*(1-tau)+self.targetOrient[j]*tau) end
+                local m=simInterpolateMatrices(self.currentM,self.targetM,tau)
+                local euler=simGetEulerAnglesFromMatrix(m)
+                for j=1,3 do table.insert(pathPoints,euler[j]) end
             end
-            simInsertPathCtrlPoints(h,0,0,#p,data)
+            self.pathItems[#self.pathItems+1]={len/self.speed,pathPoints}
         elseif self.motion==4 then
             -- pause
             local seconds=0.001*self.param
             self.pathNumber=self.pathNumber+1
-            local dh=createDummyContainer()
-            local h=simCreateDummy(0)
-            simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
-            simSetObjectParent(h,dh,true)
-            simWriteCustomDataBlock(h,'duration',simPackFloats({seconds}))
+            if self.visualizationMethod==2 then
+                local dh=createDummyContainer()
+                local h=simCreateDummy(0)
+                simSetObjectName(h,string.format('Path_%06d',self.pathNumber))
+                simSetObjectParent(h,dh,true)
+                simWriteCustomDataBlock(h,'duration',simPackFloats({seconds}))
+            end
+            if self.visualizationMethod==1 then
+                -- simAddDrawingObjectItem(self.bluePointContainer,{self.currentPos[1]*self.unitMultiplier,self.currentPos[2]*self.unitMultiplier,self.currentPos[3]*self.unitMultiplier})
+                simAddDrawingObjectItem(self.bluePointContainer,{self.currentM[4]*self.unitMultiplier,self.currentM[8]*self.unitMultiplier,self.currentM[12]*self.unitMultiplier})
+            end
+            self.pathItems[#self.pathItems+1]={seconds,{}}
         end
 
-        for i=1,3 do
-            self.currentPos[i]=self.targetPos[i]
-            self.currentOrient[i]=self.targetOrient[i]
+        -- for i=1,3 do
+        --     self.currentPos[i]=self.targetPos[i]
+        --     self.currentOrient[i]=self.targetOrient[i]
+        -- end
+        for i=1,12 do
+            self.currentM[i]=self.targetM[i]
         end
+        
     end,
 
     A=function(self,value)
         -- A: Absolute or incremental position of A axis (rotational axis around X axis)
         log(LOG.TRACE,'A%s  A-axis position',value)
-        self.targetOrient[1]=(self.absolute and 0 or self.targetOrient[1])+value
+        -- self.targetOrient[1]=(self.absolute and 0 or self.targetOrient[1])+value
+        if self.absolute then
+            local euler=simGetEulerAnglesFromMatrix(self.targetM)
+            self.targetM=simBuildMatrix({self.targetM[4],self.targetM[8],self.targetM[12]},{value,euler[2],euler[3]})
+        else
+            self.targetM=simRotateAroundAxis(self.targetM,{self.targetM[1],self.targetM[5],self.targetM[9]},{self.targetM[4],self.targetM[8],self.targetM[12]},value)
+        end
     end,
 
     B=function(self,value)
         -- B: Absolute or incremental position of B axis (rotational axis around Y axis)	
         log(LOG.TRACE,'B%s  B-axis position',value)
-        self.targetOrient[2]=(self.absolute and 0 or self.targetOrient[2])+value
+        -- self.targetOrient[2]=(self.absolute and 0 or self.targetOrient[2])+value
+        if self.absolute then
+            local euler=simGetEulerAnglesFromMatrix(self.targetM)
+            self.targetM=simBuildMatrix({self.targetM[4],self.targetM[8],self.targetM[12]},{euler[1],value,euler[3]})
+        else
+            self.targetM=simRotateAroundAxis(self.targetM,{self.targetM[2],self.targetM[6],self.targetM[10]},{self.targetM[4],self.targetM[8],self.targetM[12]},value)
+        end
     end,
 
     C=function(self,value)
         -- C: Absolute or incremental position of C axis (rotational axis around Z axis)	
         log(LOG.TRACE,'C%s  C-axis position',value)
-        self.targetOrient[3]=(self.absolute and 0 or self.targetOrient[3])+value
+        -- self.targetOrient[3]=(self.absolute and 0 or self.targetOrient[3])+value
+        if self.absolute then
+            local euler=simGetEulerAnglesFromMatrix(self.targetM)
+            self.targetM=simBuildMatrix({self.targetM[4],self.targetM[8],self.targetM[12]},{euler[1],euler[2],value})
+        else
+            self.targetM=simRotateAroundAxis(self.targetM,{self.targetM[3],self.targetM[7],self.targetM[11]},{self.targetM[4],self.targetM[8],self.targetM[12]},value)
+        end
     end,
 
     F=function(self,value)
@@ -364,7 +449,10 @@ GCodeInterpreter = {
 
     G28=function(self)
         log(LOG.TRACE,'G28  Return to home position')
-        self.targetPos={0,0,0}
+        -- self.targetPos={0,0,0}
+        self.targetM[4]=0
+        self.targetM[8]=0
+        self.targetM[12]=0
     end,
 
     G90=function(self)
@@ -417,19 +505,22 @@ GCodeInterpreter = {
 
     U=function(self,value)
         log(LOG.TRACE,'U%s  Incremental position of X axis',value)
-        self.targetPos[1]=self.targetPos[1]+value
+        -- self.targetPos[1]=self.targetPos[1]+value
+        self.targetM[4]=self.targetM[4]+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
 
     V=function(self,value)
         log(LOG.TRACE,'V%s  Incremental position of X axis',value)
-        self.targetPos[2]=self.targetPos[2]+value
+        -- self.targetPos[2]=self.targetPos[2]+value
+        self.targetM[8]=self.targetM[8]+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
 
     W=function(self,value)
         log(LOG.TRACE,'W%s  Incremental position of X axis',value)
-        self.targetPos[3]=self.targetPos[3]+value
+        -- self.targetPos[3]=self.targetPos[3]+value
+        self.targetM[12]=self.targetM[12]+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
 
@@ -437,14 +528,16 @@ GCodeInterpreter = {
         -- X: Absolute or incremental position of X axis.
         --    Also defines dwell time on some machines (instead of "P" or "U").
         log(LOG.TRACE,'X%s  Absolute/incremental position of X axis',value)
-        self.targetPos[1]=(self.absolute and 0 or self.targetPos[1])+value
+        -- self.targetPos[1]=(self.absolute and 0 or self.targetPos[1])+value
+        self.targetM[4]=(self.absolute and 0 or self.targetM[4])+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
 
     Y=function(self,value)
         -- Y: Absolute or incremental position of Y axis	
         log(LOG.TRACE,'Y%s  Absolute/incremental position of Y axis',value)
-        self.targetPos[2]=(self.absolute and 0 or self.targetPos[2])+value
+        -- self.targetPos[2]=(self.absolute and 0 or self.targetPos[2])+value
+        self.targetM[8]=(self.absolute and 0 or self.targetM[8])+value
         if self.motion==0 then self.motion=self.lastMotion end
     end,
 
@@ -453,8 +546,8 @@ GCodeInterpreter = {
         --    The main spindle's axis of rotation often determines which axis of a
         --    machine tool is labeled as Z.
         log(LOG.TRACE,'Z%s  Absolute/incremental position of Z axis',value)
-        self.targetPos[3]=(self.absolute and 0 or self.targetPos[3])+value
+        -- self.targetPos[3]=(self.absolute and 0 or self.targetPos[3])+value
+        self.targetM[12]=(self.absolute and 0 or self.targetM[12])+value
         if self.motion==0 then self.motion=self.lastMotion end
     end
 }
-
