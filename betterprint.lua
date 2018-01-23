@@ -58,3 +58,16 @@ print('aaa')
 print(199)
 print({1,2,3})
 print({f=1,g=2,h={a=100,b=200,z={1,2,3},s='hello'}})
+
+function printf(fmt,...)
+    local a={...}
+    for i=1,#a do
+        if type(a[i])=='table' then
+            a[i]=any_tostring(a[i])
+        end
+    end
+    print(string.format(fmt,unpack(a)))
+end
+
+printf('pi is %.3f, tbl is %s', math.pi, {1,2,f={a=1,b=2}})
+
